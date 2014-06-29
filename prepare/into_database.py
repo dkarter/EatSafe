@@ -9,7 +9,7 @@ def recode(result):
     if result == 'Pass':
         return 100
     elif result == 'Pass w/ Conditions':
-        return 50
+        return 90
     else:
         return 0
 
@@ -18,6 +18,8 @@ df['Inspection Date'] = df['Inspection Date'].apply(
         lambda x: x.replace('/', '-'))
 
 df['Bankrupt'] = df['Results'] == 'Out of Business'
+df['Complaint'] = df['Results'] == 'Complaint'
+
 df['Results'] = df['Results'].apply(recode)
 
 with db.connect('db/food_inspections.db', 
