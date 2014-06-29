@@ -2,12 +2,13 @@ from app import app
 import flask
 from flask import render_template
 from flask import request
+from flask import Response
+
 import json
 from database import session
 from schema import Inspection
 from math import radians, cos, sin, asin, sqrt
 from sqlalchemy.sql import func
-
 #============================================================================
 # haversine
 # 
@@ -27,7 +28,7 @@ def haversine(lon1, lat1, lon2, lat2):
     Calculate the great circle distance between two points 
     on the earth (specified in decimal degrees)
 
-    Returns answer in km
+    Returns answer in m
     """
     # convert decimal degrees to radians 
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
@@ -72,7 +73,8 @@ def place():
                 'itype': inspection[3]
                 })
 
-    return json.dumps(result)
+    return Response(json.dumps(result), mimetype='text/json')
+
 """ 
 #============================================================================
 # zipped, ii contains
@@ -82,7 +84,6 @@ def place():
 #  [itype1, itype2, itype3, ...]]
 ##===========================================================================
     ii = zip(*inspection_info)
-
 """
 #============================================================================
 # /near
@@ -97,6 +98,8 @@ def place():
 # returns:
 # a json string object of list of closest 20 restaurants and their health
 # inspection scores
+# 
+# note: distance is returned in miles
 #
 ##===========================================================================
 @app.route('/near')
@@ -134,11 +137,16 @@ def check():
                 store_long, 
                 store_lat)
         
+        if d < 1609:
+            miles = '%.2f'%(d*0.000621371)
+        else:
+            miles = '%.0f'%(d*0.000621371)
+
         if d < max_dist:
             results.append({
                     'name': name,
                     'address': address,
-                    'dist': d,
+                    'dist': miles,
                     'score': int(score),
                     'count': count
                 })
@@ -146,47 +154,4 @@ def check():
     sorted_results = sorted(results, key=lambda k: k['dist'])[:20]
     
     # formulate json response
-    return json.dumps(sorted_results)
-"""
-#============================================================================
-# get detailed inspection information on the results
-##===========================================================================
-    final = []
-    for restaurant in sorted_results:
-        inspection_info = session.query(
-                Inspection.Risk,
-                Inspection.Inspection_Date,
-                Inspection.Results,
-                Inspection.Violations,
-                Inspection.Inspection_Type).filter(
-                        Inspection.AKA_Name==restaurant['name'] and
-                        Inspection.Address==restaurant['address']).all()
-
-        ii = zip(*inspection_info)
-        
-        # if the latest inspection showed they went out of business, pass
-        if ii[2][-1] == 'Out of Business':
-            continue
-
-#============================================================================
-# Calculate "safety score" = # Passed Inspections / # Failed Inspections
-##===========================================================================
-        sum_score = 0
-        count = 0
-        for result in ii[2]:
-            if result == 'Pass':
-                sum_score += 100
-            elif result == 'Pass w/ Conditions':
-                sum_score += 50
-            else:
-                # result is either "Out of Business" or "Fail"
-                pass
-
-            count += 1
-
-        safety_score = sum_score/count
-        restaurant['score'] = safety_score
-        restaurant['count'] = count
-        final.append(restaurant)
-        
-"""
+    return Response(json.dumps(sorted_results), mimetype='text/json')
