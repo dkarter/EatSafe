@@ -22,9 +22,9 @@ one health inspection for unfair reasons, we assume that over the span of its
 history, the inspections average out to be indicative of the restaurant's
 quality.
 
-NOTE: This may be an inaccurate assumption. If we receive information that
-indicates that that might be the case, we can do deeper analyses (for example,
-by looking at whether any _inspectors_ are systematically biased).
+(Note: If you have any information that might suggest that inspectors might
+be systematically biased, contact us and we can attempt some deeper analyses)
 
 [1] http://chicago.grubstreet.com/2012/01/direct_access_to_health_inspec.html 
+
 [2] http://chicago.cbslocal.com/2011/11/03/tunney-public-may-not-understand-restaurant-inspection-results/
