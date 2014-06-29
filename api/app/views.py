@@ -10,7 +10,7 @@ from database import session
 from schema import Inspection, Yelp
 from math import radians, cos, sin, asin, sqrt
 from sqlalchemy.sql import func
-from helpers import haversine, get_rating, get_geo, get_yelp_id
+from helpers import haversine, get_rating, get_geo, get_yelp_json
 import requests
 import urllib
 from settings import gkey, ykey
@@ -21,6 +21,14 @@ gquery="https://maps.googleapis.com/maps/api/place/textsearch/json?query={q}&key
 yquery = 'http://api.yelp.com/business_review_search?term={name}&location={addr}&limit=1&ywsid=' + ykey
 #google instant API
 ginstant = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input={substring}&types=establishment&radius=50000&key=' + gkey
+
+
+#============================================================================
+# Failed attempt at creating a web version of the app
+##===========================================================================
+@app.route('/map')
+def show_map():
+    return render_template('map.html', key=gkey)
 
 #============================================================================
 # /instant
@@ -54,11 +62,9 @@ def instant():
         print "ConnectionError in Google Instant API--check connection?"
         return Response(json.dumps({}), mimetype='text/json')
 
-    
     if not r.ok:
         print "Request to Google Instant API failed: {}.".format(r.code)
         return Response(json.dumps({}), mimetype='text/json')
-
     
     try:
         j = r.json()
@@ -68,9 +74,10 @@ def instant():
     
     result = []
     if j and j.has_key('predictions'):
-        for pred in j['predictions']:
+        for pred in j['predictions'][:8]:
             item = {'name': pred['description'],
                     'place_id': pred['id']}
+
             result.append(item)
         
     return Response(json.dumps(result), mimetype='text/json')
@@ -93,17 +100,25 @@ def instant():
 # if both are provided, name+addr takes precedence
 #
 # returns:
-#   json string object that contains a list of previous inspections
+#   json object that contains summary information about the restaurant
+#       as well as a list of previous inspections
+#   
+#   
 ##===========================================================================
 @app.route('/place')
 def place():
     query = request.args.get('query', '', type=str)
     longitude = request.args.get('long', '', type=str)
     latitude = request.args.get('latitude', '', type=str)
-    yelp_id = get_yelp_id(query, longitude, latitude)
+    simple = request.args.get('simple', False, type=bool)
+
+    gjs, yjs = get_yelp_json(query, longitude, latitude)
     
-    if not yelp_id:
-        return Response(json.dumps({}), mimetype='text/json')
+    if not yjs['id']:
+        return Response(json.dumps({
+
+            
+            }), mimetype='text/json')
 
     restaurant_info = session.query(
             Yelp.db_name,
@@ -113,10 +128,16 @@ def place():
             Yelp.yelp_name,
             Yelp.yelp_address,
             Yelp.zip_code,
-            Yelp.photo_url).filter(Yelp.yelp_id==yelp_id).all()
-
+            Yelp.photo_url).filter(Yelp.yelp_id==yjs['id']).all()
+    
     if not restaurant_info:
-        return Response(json.dumps({}), mimetype='text/json')
+        return Response(json.dumps({
+            'name': gjs['name'],
+            'address': yjs['address1'],
+            'pic': yjs['photo_url'],
+            'yelp_rating_pic': yjs['rating_img_url'],
+            'yelp_review_count': yjs['review_count']
+            }), mimetype='text/json')
     else:
         ri = restaurant_info[0]
 
@@ -127,8 +148,8 @@ def place():
             'yelp_rating_pic': ri[2],
             'yelp_review_count': ri[3],
             'name': ri[4],
-            'addr': ri[5].strip(),
-            'addr2': 'Chicago, IL, ' + ri[6].strip(), 
+            'address': ri[5].strip(),
+            'address2': 'Chicago, IL, ' + ri[6].strip(), 
             'pic': ri[7]
             }
             
@@ -136,7 +157,9 @@ def place():
             Inspection.Inspection_Date,
             Inspection.Results,
             Inspection.Violations,
-            Inspection.Inspection_Type).filter(
+            Inspection.Inspection_Type,
+            Inspection.Longitude,
+            Inspection.Latitude).filter(
                     Inspection.AKA_Name==db_name and
                     Inspection.Address==db_addr).all()
         
@@ -156,16 +179,38 @@ def place():
     returned['rating'] = rating
     returned['count'] = len(ii[1])
 
-    details = []
-    for inspection in inspection_info:
-        details.append({
-                'date': inspection[0],
-                'result': inspection[1],
-                'violations': inspection[2],
-                'itype': inspection[3]
-                })
+    if not simple:
+        details = []
+        for inspection in inspection_info:
+            details.append({
+                    'date': inspection[0],
+                    'result': inspection[1],
+                    'violations': inspection[2],
+                    'itype': inspection[3]
+                    })
+        
+        returned['details'] = details
+    try:
+        otr = requests.get('http://opentable.herokuapp.com/api/restaurants?name={name}&\
+                address={addr}&city=Chicago&zip={zip_code}'.format(
+                    name=returned['name'],
+                    addr=returned['address'],
+                    zip_code=ri[6]))
+    except requests.ConnectionError:
+        pass
+
+    if otr and otr.ok:
+        otrj = otr.json()
+        if otrj['total_entries'] > 0:
+            otrid = otrj['restaurants'][0]
+            try:
+                otr_reserve_url = otrj['restaurants'][0]['mobile_reserve_url']
+            except IndexError:
+                otr_reserve_url = ''
     
-    returned['details'] = details
+            returned['otr_reserve_url'] = otr_reserve_url
+
+    
     return Response(json.dumps(returned), mimetype='text/json')
 
     """

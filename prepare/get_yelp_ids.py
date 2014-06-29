@@ -4,7 +4,7 @@ import cPickle as p
 import pandas as pd
 import urllib
 
-query = 'http://api.yelp.com/business_review_search?term={name}&location={addr}+Chicago+IL&ywsid=***REMOVED***&limit=1'
+query = 'http://api.yelp.com/business_review_search?term={name}&location={addr}+Chicago+IL&ywsid=GgvrI6Jaq8l0zU4E1k9X0g&limit=1'
 
 with open('data/name_addr.csv', 'r') as f:
     dialect = csv.Sniffer().sniff(f.read(1024))
