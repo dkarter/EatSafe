@@ -8,3 +8,6 @@ DATABASES = {
         'NAME': DATABASE_DIR
         #'NAME': join(PROJECT_DIR, 'cygnet.db')
         }
+
+gkey = '***REMOVED***'
+ykey = '***REMOVED***'
