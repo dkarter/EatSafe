@@ -9,5 +9,5 @@ DATABASES = {
         #'NAME': join(PROJECT_DIR, 'cygnet.db')
         }
 
-gkey = '***REMOVED***'
-ykey = '***REMOVED***'
+gkey = 'AIzaSyC1xrvL9qlyFJKQPUA2KcHhlyFSyianN_k'
+ykey = 'GgvrI6Jaq8l0zU4E1k9X0g'
