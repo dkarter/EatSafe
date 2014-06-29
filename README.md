@@ -16,7 +16,7 @@ or of circumstance [2] (chief example: a restaurant failed an inspection for
 storing food at too high temperatures after their power went out).
 
 
-##Our solution:
+###Our solution:
 Our solution is to create a metric that aggregates a restaurant's
 inspection ratings over time, and presents that in a clear and accessible 
 format for the public (an iOS app). Even if a particular restaurant failed
