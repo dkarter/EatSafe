@@ -99,7 +99,7 @@ def get_geo(q):
 # Because of our love of Yelp ratings, and Yelp API's inability to do 
 # fuzzy matching, we first query Google Places API to get the Name + Address.
 #============================================================================
-def get_yelp_id(q, longitude=None,latitude=None):
+def get_yelp_json(q, longitude=None,latitude=None):
     
     if longitude and latitude:
         loc = ',location={lat},{lng}'.format(
@@ -124,17 +124,22 @@ def get_yelp_id(q, longitude=None,latitude=None):
     except JSONDecodeError:
         print r.text
         return
-
-    if j and j['results']:
+   
+    try:
         name = j['results'][0]['name']
         addr = j['results'][0]['formatted_address']
+    except KeyError:
+        print "Key not found in get_yelp_id"
+    except IndexError:
+        print "Index out of range in get_yelp_id"
+    
 
 #============================================================================
 # Then, using that information, we query the Yelp API to get the Yelp ID
 ##===========================================================================
-
+    
     yq = yquery.format(
-            name=urllib.quote_plus(name),
+            name=urllib.quote_plus(name.encode('utf-8')),
             addr=urllib.quote_plus(addr))
     try:
         r = requests.get(yq)
@@ -152,6 +157,4 @@ def get_yelp_id(q, longitude=None,latitude=None):
         print "Bad Yelp API response!: " + r.text
         return
     
-    yid = yj['id']
-    return yid
-
+    return j['results'][0], yj
