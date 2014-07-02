@@ -23,6 +23,7 @@ yquery = 'http://api.yelp.com/business_review_search?term={name}&location={addr}
 # returns:
 #   distance between them, in meters
 ##===========================================================================
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points 
@@ -88,6 +89,7 @@ def get_geo(q):
                 'lat': item['geometry']['location']['lat'],
                 'long': item['geometry']['location']['lng']
                 }
+
 #============================================================================
 # get_yelp_id:
 # 
@@ -99,8 +101,9 @@ def get_geo(q):
 # Because of our love of Yelp ratings, and Yelp API's inability to do 
 # fuzzy matching, we first query Google Places API to get the Name + Address.
 #============================================================================
+
 def get_yelp_json(q, longitude=None,latitude=None):
-    
+
     if longitude and latitude:
         loc = ',location={lat},{lng}'.format(
                 lat=latitude,
@@ -124,7 +127,7 @@ def get_yelp_json(q, longitude=None,latitude=None):
     except JSONDecodeError:
         print r.text
         return
-   
+    
     try:
         name = j['results'][0]['name']
         addr = j['results'][0]['formatted_address']
@@ -132,7 +135,7 @@ def get_yelp_json(q, longitude=None,latitude=None):
         print "Key not found in get_yelp_id"
     except IndexError:
         print "Index out of range in get_yelp_id"
-    
+        return
 
 #============================================================================
 # Then, using that information, we query the Yelp API to get the Yelp ID

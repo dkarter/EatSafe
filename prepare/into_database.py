@@ -19,6 +19,7 @@ df['Inspection Date'] = df['Inspection Date'].apply(
 
 df['Bankrupt'] = df['Results'] == 'Out of Business'
 df['Complaint'] = df['Results'] == 'Complaint'
+df['Failure'] = df['Results'] == 'Fail'
 
 df['Results'] = df['Results'].apply(recode)
 

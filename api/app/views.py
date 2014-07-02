@@ -3,11 +3,13 @@ import flask
 from flask import render_template
 from flask import request
 from flask import Response
+from flask import abort
+
 from simplejson import JSONDecodeError
 
 import json
 from database import session
-from schema import Inspection, Yelp
+from schema import Inspection, Restaurant
 from math import radians, cos, sin, asin, sqrt
 from sqlalchemy.sql import func
 from helpers import haversine, get_rating, get_geo, get_yelp_json
@@ -74,7 +76,7 @@ def instant():
     
     result = []
     if j and j.has_key('predictions'):
-        for pred in j['predictions'][:8]:
+        for pred in j['predictions'][:4]:
             item = {'name': pred['description'],
                     'place_id': pred['id']}
 
@@ -112,23 +114,24 @@ def place():
     latitude = request.args.get('latitude', '', type=str)
     simple = request.args.get('simple', False, type=bool)
 
-    gjs, yjs = get_yelp_json(query, longitude, latitude)
-    
-    if not yjs['id']:
+    json_tuple= get_yelp_json(query, longitude, latitude)
+    if json_tuple:
+        gjs, yjs = json_tuple
+    else:
         return Response(json.dumps({
 
-            
             }), mimetype='text/json')
 
+################# FIX THIS:
     restaurant_info = session.query(
-            Yelp.db_name,
-            Yelp.db_addr,
-            Yelp.rating_img_url,
-            Yelp.review_count,
-            Yelp.yelp_name,
-            Yelp.yelp_address,
-            Yelp.zip_code,
-            Yelp.photo_url).filter(Yelp.yelp_id==yjs['id']).all()
+            Restaurant.db_name,
+            Restaurant.db_addr,
+            Restaurant.rating_img_url,
+            Restaurant.review_count,
+            Restaurant.yelp_name,
+            Restaurant.yelp_address,
+            Restaurant.zip_code,
+            Restaurant.photo_url).filter(Restaurant.yelp_id==yjs['id']).all()
     
     if not restaurant_info:
         return Response(json.dumps({
@@ -143,6 +146,19 @@ def place():
 
     db_name = ri[0]
     db_addr = ri[1]
+
+    general_stats = \
+            session.query(Inspection.AKA_Name,
+                    Inspection.Address,
+                    Inspection.Longitude,
+                    Inspection.Latitude,
+                    func.avg(Inspection.Results),
+                    func.count(Inspection.Results),
+                    func.count(Inspection.Complaint)).group_by(Inspection.AKA_Name,
+                                                Inspection.Address).\
+                    filter(db_name==Inspection.AKA_Name,
+                            db_addr==Inspection.Address).all()
+
 
     returned = {
             'yelp_rating_pic': ri[2],
@@ -172,20 +188,28 @@ def place():
 ##===========================================================================
     ii = zip(*inspection_info)
     score = sum(ii[1])/len(ii[1])
-
     rating = get_rating(score)
     
-    returned['score'] = score
-    returned['rating'] = rating
-    returned['count'] = len(ii[1])
+    # count number of failures
+    failures = 0
+    for n in ii[1]:
+        if n == 0:
+            failures += 1
 
+    # count number of complaints
+    complaints = 0
+    for n in ii[3]:
+        if n == 'Complaint':
+            failures += 1
+    
+    returned['otr_reserve_url'] = ''
     if not simple:
         details = []
         for inspection in inspection_info:
             details.append({
                     'date': inspection[0],
                     'result': inspection[1],
-                    'violations': inspection[2],
+                    #'violations': inspection[2],
                     'itype': inspection[3]
                     })
         
@@ -206,139 +230,162 @@ def place():
             try:
                 otr_reserve_url = otrj['restaurants'][0]['mobile_reserve_url']
             except IndexError:
-                otr_reserve_url = ''
+                pass
     
             returned['otr_reserve_url'] = otr_reserve_url
-
+    
+    returned['complaints'] = complaints
+    returned['score'] = score
+    returned['rating'] = rating
+    returned['count'] = len(ii[1])
+    returned['failures'] = failures
     
     return Response(json.dumps(returned), mimetype='text/json')
 
-    """
-    if name and address:
-        inspection_info = session.query(
-                Inspection.Inspection_Date,
-                Inspection.Results,
-                Inspection.Violations,
-                Inspection.Inspection_Type).filter(
-                        Inspection.AKA_Name==name and
-                        Inspection.Address==address).all()
-        
-        result = []
-        for inspection in inspection_info:
-            result.append({
-                    'date': inspection[0],
-                    'result': inspection[1],
-                    'violations': inspection[2],
-                    'itype': inspection[3]
-                    })
-        return Response(json.dumps(result), mimetype='text/json')
-        """
 
-#============================================================================
-# /near
-#
-# find nearby restaurants and their aggregate health inspection scores
-# 
-# variables:
-# -long: the longitude to search near
-# -lat: the latitude to search near
-# -d: the radius to search around (in meters)
-#
-# returns:
-# a json string object of list of closest 20 restaurants and their health
-# inspection scores
-# 
-# note: distance is returned in miles
-#
-##===========================================================================
 @app.route('/near')
 def check():
+    """
 
+    check():
+
+     route /near?
+
+     find nearby restaurants and their aggregate health inspection scores
+     
+     required variables:
+     -long: the longitude to search near
+     -lat: the latitude to search near
+
+     returns:
+     {
+     'name': name of the restaurant,
+     'address': address,
+     'google_id': google place ID--> use for if they click
+     'dist': distance in miles,
+     'pic': link to photo,
+     'rating': letter rating (A, B, C, F, ?),
+     'yelp_rating': yelp rating (float: 0, 0.5, ..., 3.5, 4)
+     }
+     
+     a json string object of list of closest 20 restaurants and their health
+     inspection scores
+     
+     note: distance is returned in miles
+
+    """
+    MAX_DIST = 5000
     longitude = request.args.get('long', '', type=float)
     latitude = request.args.get('lat', '', type=float)
 
     if not (longitude and latitude):
-        query = request.args.get('query', '', type=str)
-        geo = get_geo(query)
-        longitude = geo['long']
-        latitude = geo['lat']
-        max_dist = 500
-
-        print longitude, latitude
-
-    
-    max_dist = request.args.get('d', '', type=float) 
-
-    # todo: return error
-    assert longitude and latitude and max_dist
-        
+        abort(400)
 
     # get all unique restaurants from the database
 
-    all_restaurants = \
-            session.query(Inspection.AKA_Name,
-                    Inspection.Address,
-                    Inspection.Longitude,
-                    Inspection.Latitude,
-                    func.avg(Inspection.Results),
-                    func.count(Inspection.Results)).group_by(Inspection.AKA_Name,
-                                                Inspection.Address).all()
+    all_restaurants = session.query(
+        Restaurant.google_id,
+        Restaurant.db_name,
+        Restaurant.db_addr,
+        Restaurant.google_name,
+        Restaurant.google_lat,
+        Restaurant.google_lng,
+        Restaurant.yelp_name,
+        Restaurant.yelp_rating,
+        Restaurant.yelp_review_count,
+        Restaurant.yelp_photo_url,
+        Restaurant.yelp_rating_img_url,
+        Restaurant.yelp_address,
+        Restaurant.yelp_zip,
+        Restaurant.yelp_phone,
+        Restaurant.rating,
+        Restaurant.complaints,
+        Restaurant.db_long,
+        Restaurant.db_lat,
+        Restaurant.num).all()
+
+    key = {'complaints': 15,
+     'db_addr': 2,
+     'db_name': 1,
+     'google_id': 0,
+     'google_lat': 4,
+     'google_lng': 5,
+     'google_name': 3,
+     'rating': 14,
+     'yelp_address': 11,
+     'yelp_name': 6,
+     'yelp_phone': 13,
+     'yelp_photo_url': 9,
+     'yelp_rating': 7,
+     'yelp_rating_img_url': 10,
+     'yelp_review_count': 8,
+     'db_long':16,
+     'db_lat':17,
+     'count': 18}
 
     # loop through all restaurants, calculate distance
-    
+    valid = []
     results = []
 
-    for name, address, store_long, store_lat, score, count in all_restaurants:
-        if not store_long or not store_lat:
+    for row in all_restaurants:
+
+        # throw away all restaurants without google IDs
+        if not row[key['google_id']]:
             continue
-        d = haversine(longitude, 
-                latitude, 
-                store_long, 
-                store_lat)
+        
+        # throw away restaurants without longitude
+        if not row[key['db_long']] and not row[key['google_lng']]:
+            continue
+        
+        # use google stuff when we have it
+        if row[key['google_lng']]:
+            lng, lat = map(float, 
+                    (row[key['google_lng']], row[key['google_lat']]))
+        else:
+            lng, lat = row[key['db_long']], row[key['db_lat']]
+
+        d = haversine(longitude, latitude, lng, lat)
+
+        if d < MAX_DIST:
+            valid.append({row: d})
+
+    closest = sorted(valid, key=lambda x: x.get)[:20]
+    
+    for row in closest:
+        row,d = row.items()[0]
+        if row[key['yelp_address']]:
+            addr = row[key['yelp_address']]
+        else:
+            addr = row[key['db_addr']]
+
+        if row[key['yelp_photo_url']]:
+            photo = row[key['yelp_photo_url']]
+        else:
+            photo = 'http://s3-media1.fl.yelpcdn.com/assets/2/www/img/5f69f303f17c/default_avatars/business_medium_square.png'
+        
+        rating = get_rating(row[key['rating']])
+        if rating == 'A' and row[key['count']] <= 1:
+            rating = '-'
         
         if d < 1609:
             miles = '%.2f'%(d*0.000621371)
         else:
-            miles = '%.0f'%(d*0.000621371)
-        
-        rating = get_rating(score)
+            miles = '%.1f'%(d*0.000621371)
 
-        if d < max_dist:
-            restaurant_info = session.query(
-                    Yelp.yelp_name,
-                    Yelp.yelp_id,
-                    Yelp.rating_img_url,
-                    Yelp.review_count,
-                    Yelp.yelp_address,
-                    Yelp.zip_code,
-                    Yelp.photo_url).filter(
-                            Yelp.db_name==name, 
-                            Yelp.db_addr==address).all()
-            if restaurant_info:
-                ri = restaurant_info[0]
-                use_name = ri[0]
-                rating_pic = ri[2]
-                review_count = ri[3]
-                use_address = ri[4] + ', ' + ri[5]
-                photo = ri[6]
-            else:
-                use_name = name
-                rating_pic = ''
-                review_count = 0
-                use_address = address
-                photo = 'http://s3-media1.fl.yelpcdn.com/assets/2/www/img/5f69f303f17c/default_avatars/business_medium_square.png'
-            results.append({
-                    'name': use_name,
-                    'address': use_address,
-                    'dist': miles,
-                    'score': int(score),
-                    'count': count,
-                    'pic': photo,
-                    'rating': rating,
-                    'yelp_rating_pic': rating_pic
-                })
+        results.append({
+                'name': row[key['google_name']],
+                'id': row[key['google_id']],
+                'address': addr,
+                'dist': miles,
+                'pic': photo,
+                'rating': rating,
+                'yelp_rating': row[key['yelp_rating']]
+            })
     
-    sorted_results = sorted(results, key=lambda k: k['dist'])[:20]
-    
+
     # formulate json response
-    return Response(json.dumps(sorted_results), mimetype='text/json')
+    return Response(json.dumps(results), mimetype='text/json')
+
+@app.errorhandler(400)
+def bad_request():
+    return json.dumps({'code': 'bad API arguments'})
