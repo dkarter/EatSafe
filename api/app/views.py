@@ -165,8 +165,8 @@ def place():
             Inspection.Results,
             Inspection.Inspection_Type
             ).filter(
-                    Inspection.AKA_Name==info[keys['db_name']] and
-                    Inspection.Address==info[keys['db_addr']]).all()
+                    Inspection.AKA_Name==info_dict['db_name'] and
+                    Inspection.Address==info_dict['db_addr']).all()
 
     name = info_dict['google_name'] or info_dict['db_name']
     addr = info_dict['yelp_address'] or info_dict['db_addr']
