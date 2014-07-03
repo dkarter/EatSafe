@@ -1,0 +1,3 @@
+[submodule "EatSafe"]
+	path = EatSafe
+	url = https://github.com/samzhang111/EatSafe.git
