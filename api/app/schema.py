@@ -51,6 +51,7 @@ class Restaurant(Base):
     num = Column(Integer)
     bankrupt = Column(Integer)
     complaints = Column(Integer)
+    failures = Column(Integer)
 
     db_lat = Column(Float)
     db_long = Column(Float)
